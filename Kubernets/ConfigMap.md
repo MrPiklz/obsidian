@@ -89,3 +89,136 @@ kubectl apply -f pod.yaml
 ```bash
 kubectl -n demo-cm describe po pod-with-cm
 ```
+
+
+### Монтирование файлов
+
+БД.
+
+```yaml
+## пример config.yaml
+
+app:
+  name: my-application
+  version: 1.0.0
+
+server:
+  port: 8080
+  host: 0.0.0.0
+
+database:
+  host: localhost
+  port: 5432
+  user: db_user
+  password: db_password
+  name: my_database
+
+logging:
+  level: info
+```
+
+1. deployment.yaml
+    
+прописываем к деплоймент монтирование конфига
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deployment-with-cm
+  namespace: demo-cm
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: demo-app
+  template:
+    metadata:
+      labels:
+        app: demo-app
+    spec:
+      containers:
+      - name: app
+        image: busybox
+        command: ["/bin/sh", "-c", "cat /etc/config/* && sleep 3600"]
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/config
+      volumes:
+      - name: config-volume
+        configMap:
+          name: first-cm
+```
+
+
+Императивный подход
+
+Допустим, Вы создали TLS ключ: 
+
+```bash
+openssl genrsa -out server.key 2048
+```
+
+И Вам надо превратить его в ConfigMap, чтобы использовать в приложении. Для этого Вы можете создать ConfigMap, используя команду: 
+
+```bash
+kubectl -n demo-cm create configmap test-tls-key --from-file="server.key"
+```
+
+Но если Вы всё-таки ищете простой способ создать подобный ConfigMap, но при этом хотите соблюдать подход IaC, то вы можете сделать dry-run этой команды, получить и сохранить ямлик, чтобы потом применить его через `kubectl apply`:
+
+```bash
+kubectl -n demo-cm create configmap test-tls-key --from-file="server.key" --dry-run="client" -o yaml
+```
+
+### Переменные окружения
+
+
+1. cm-env.yaml
+    
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: env-config
+  namespace: demo-cm
+data:
+  LOG_LEVEL: "debug"
+  DATABASE_URL: "postgresql://user:password@db:5432/mydatabase"
+```
+
+      2. deployment-env.yaml  
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deployment-with-env
+  namespace: demo-cm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-app
+  template:
+    metadata:
+      labels:
+        app: demo-app
+    spec:
+      containers:
+      - name: app
+        image: busybox
+        command: ["/bin/sh", "-c", "echo \"Log Level: $LOG_LEVEL, Database URL: $DATABASE_URL\" && sleep 3600"]
+        envFrom:
+        - configMapRef:
+            name: env-config
+```
+
+Здесь мы уже не описываем конструкцию Volume, вместо этого мы задаем поле `envFrom`. В этом поле мы делаем референс на ConfigMap, из которого нужно взять переменные окружения.
+
+      3. Примените манифесты: 
+
+```bash
+kubectl apply -f cm-env.yaml 
+kubectl apply -f deployment-env.yaml
+```
