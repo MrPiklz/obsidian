@@ -31,3 +31,7 @@ r--     4
 -w-     2
 --x     1
 ---     0
+
+
+
+ps -eo pid,ppid,state,cmd | grep ' Z '    --- zombie processes
